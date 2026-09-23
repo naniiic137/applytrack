@@ -49,8 +49,8 @@ export const api = {
   updateApplication: (id: number, input: ApplicationInput) =>
     request<ApplicationDetail>(`/api/applications/${id}`, { method: 'PUT', body: input }),
 
-  changeStatus: (id: number, status: ApplicationStatus) =>
-    request<ApplicationDetail>(`/api/applications/${id}/status`, { method: 'PATCH', body: { status } }),
+  changeStatus: (id: number, status: ApplicationStatus, version: number) =>
+    request<ApplicationDetail>(`/api/applications/${id}/status`, { method: 'PATCH', body: { status, version } }),
 
   deleteApplication: (id: number) => request<void>(`/api/applications/${id}`, { method: 'DELETE' }),
 

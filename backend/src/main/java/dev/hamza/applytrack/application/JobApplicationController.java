@@ -80,16 +80,17 @@ public class JobApplicationController {
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Update an application; the body must carry the version last read (409 if stale)")
     public ApplicationDetail update(@AuthenticationPrincipal AuthUser user, @PathVariable Long id,
                                     @Valid @RequestBody ApplicationRequest request) {
         return service.update(user.id(), id, request);
     }
 
     @PatchMapping("/{id}/status")
-    @Operation(summary = "Move an application to another status (records a timeline entry)")
+    @Operation(summary = "Move an application to another status (records a timeline entry; 409 if stale)")
     public ApplicationDetail changeStatus(@AuthenticationPrincipal AuthUser user, @PathVariable Long id,
                                           @Valid @RequestBody StatusUpdateRequest request) {
-        return service.changeStatus(user.id(), id, request.status());
+        return service.changeStatus(user.id(), id, request.status(), request.version());
     }
 
     @DeleteMapping("/{id}")

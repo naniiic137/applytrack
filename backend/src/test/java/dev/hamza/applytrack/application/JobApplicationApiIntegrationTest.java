@@ -92,8 +92,10 @@ class JobApplicationApiIntegrationTest extends ApiTestSupport {
                                 "role", "Backend Developer",
                                 "location", "Tunis",
                                 "notes", "Call back Monday",
-                                "tags", List.of("spring")))))
+                                "tags", List.of("spring"),
+                                "version", 0))))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version", is(1)))
                 .andExpect(jsonPath("$.company", is("Acme Corp")))
                 .andExpect(jsonPath("$.location", is("Tunis")))
                 .andExpect(jsonPath("$.tags", contains("spring")))
@@ -105,19 +107,21 @@ class JobApplicationApiIntegrationTest extends ApiTestSupport {
         long id = createApplication(token, Map.of("company", "Acme", "role", "Dev"));
 
         mvc.perform(withToken(patch("/api/applications/" + id + "/status"), token)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"APPLIED\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(statusBody("APPLIED", 0)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("APPLIED")))
+                .andExpect(jsonPath("$.version", is(1)))
                 .andExpect(jsonPath("$.appliedOn", notNullValue()));
 
         mvc.perform(withToken(patch("/api/applications/" + id + "/status"), token)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"INTERVIEW\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(statusBody("INTERVIEW", 1)))
                 .andExpect(status().isOk());
 
-        // same status again: no new timeline entry
+        // same status again: no new timeline entry, and the version does not move
         mvc.perform(withToken(patch("/api/applications/" + id + "/status"), token)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"INTERVIEW\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(statusBody("INTERVIEW", 2)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version", is(2)))
                 .andExpect(jsonPath("$.timeline", hasSize(3)))
                 .andExpect(jsonPath("$.timeline[1].fromStatus", is("WISHLIST")))
                 .andExpect(jsonPath("$.timeline[1].toStatus", is("APPLIED")))
@@ -130,8 +134,45 @@ class JobApplicationApiIntegrationTest extends ApiTestSupport {
         long id = createApplication(token, Map.of("company", "Acme", "role", "Dev"));
 
         mvc.perform(withToken(patch("/api/applications/" + id + "/status"), token)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"HIRED_ON_THE_SPOT\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"HIRED_ON_THE_SPOT\",\"version\":0}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void writesBasedOnAStaleVersionAreRejectedWith409() throws Exception {
+        long id = createApplication(token, Map.of("company", "Acme", "role", "Dev"));
+        // tab A moves the card (version 0 -> 1)
+        changeStatus(token, id, "APPLIED");
+
+        // tab B still has version 0
+        mvc.perform(withToken(put("/api/applications/" + id), token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("company", "Acme", "role", "Old edit", "version", 0))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code", is("stale_version")));
+        mvc.perform(withToken(patch("/api/applications/" + id + "/status"), token)
+                        .contentType(MediaType.APPLICATION_JSON).content(statusBody("REJECTED", 0)))
+                .andExpect(status().isConflict());
+
+        // nothing was overwritten
+        mvc.perform(withToken(get("/api/applications/" + id), token))
+                .andExpect(jsonPath("$.role", is("Dev")))
+                .andExpect(jsonPath("$.status", is("APPLIED")))
+                .andExpect(jsonPath("$.version", is(1)));
+    }
+
+    @Test
+    void updatesWithoutAVersionAreA400() throws Exception {
+        long id = createApplication(token, Map.of("company", "Acme", "role", "Dev"));
+
+        mvc.perform(withToken(put("/api/applications/" + id), token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("company", "Acme", "role", "Dev"))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(withToken(patch("/api/applications/" + id + "/status"), token)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"APPLIED\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.version", is("must not be null")));
     }
 
     @Test

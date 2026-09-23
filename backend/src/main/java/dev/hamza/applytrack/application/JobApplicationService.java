@@ -6,8 +6,10 @@ import dev.hamza.applytrack.application.ApplicationDtos.ApplicationSummary;
 import dev.hamza.applytrack.application.ApplicationDtos.InterviewRequest;
 import dev.hamza.applytrack.application.ApplicationDtos.InterviewResponse;
 import dev.hamza.applytrack.application.ApplicationDtos.PageResponse;
+import dev.hamza.applytrack.common.BadRequestException;
 import dev.hamza.applytrack.common.NotFoundException;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -62,18 +64,20 @@ public class JobApplicationService {
 
     public ApplicationDetail update(Long ownerId, Long id, ApplicationRequest request) {
         JobApplication application = load(ownerId, id);
+        checkVersion(application, request.version());
         Instant now = clock.instant();
         applyDetails(application, request, request.appliedOn(), now);
         if (request.status() != null) {
             application.moveTo(request.status(), now, today());
         }
-        return ApplicationDetail.from(application);
+        return flushedDetail(application);
     }
 
-    public ApplicationDetail changeStatus(Long ownerId, Long id, ApplicationStatus status) {
+    public ApplicationDetail changeStatus(Long ownerId, Long id, ApplicationStatus status, Long expectedVersion) {
         JobApplication application = load(ownerId, id);
+        checkVersion(application, expectedVersion);
         application.moveTo(status, clock.instant(), today());
-        return ApplicationDetail.from(application);
+        return flushedDetail(application);
     }
 
     public void delete(Long ownerId, Long id) {
@@ -103,6 +107,29 @@ public class JobApplicationService {
     private JobApplication load(Long ownerId, Long id) {
         return applications.findByIdAndOwnerId(id, ownerId)
                 .orElseThrow(() -> new NotFoundException("Application not found"));
+    }
+
+    /**
+     * Flushes first so the response carries the version JPA just incremented; otherwise the client would
+     * get the old version back and its next write would be rejected as stale.
+     */
+    private ApplicationDetail flushedDetail(JobApplication application) {
+        applications.flush();
+        return ApplicationDetail.from(application);
+    }
+
+    /**
+     * Rejects a write based on a stale read. JPA's @Version only protects the few milliseconds between our own
+     * read and write; comparing with the version the client saw also catches edits made in another tab
+     * minutes ago. Both cases end up as an OptimisticLockingFailureException, mapped to 409.
+     */
+    private static void checkVersion(JobApplication application, Long expectedVersion) {
+        if (expectedVersion == null) {
+            throw new BadRequestException("'version' is required: send the version you last read");
+        }
+        if (application.getVersion() != expectedVersion) {
+            throw new ObjectOptimisticLockingFailureException(JobApplication.class, application.getId());
+        }
     }
 
     private void applyDetails(JobApplication application, ApplicationRequest r, LocalDate appliedOn, Instant now) {

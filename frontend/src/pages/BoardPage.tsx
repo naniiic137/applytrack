@@ -37,7 +37,10 @@ export function BoardPage() {
         <KanbanBoard
           applications={data.content}
           onOpen={panels.openApp}
-          onMove={(id, status) => changeStatus.mutate({ id, status })}
+          onMove={(id, status) => {
+            const card = data.content.find((a) => a.id === id);
+            if (card) changeStatus.mutate({ id, status, version: card.version });
+          }}
         />
       )}
     </>

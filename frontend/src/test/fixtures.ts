@@ -13,6 +13,7 @@ export function summary(overrides: Partial<ApplicationSummary> = {}): Applicatio
     tags: [],
     interviewCount: 0,
     updatedAt: '2026-03-01T10:00:00Z',
+    version: 0,
     ...overrides,
   };
 }

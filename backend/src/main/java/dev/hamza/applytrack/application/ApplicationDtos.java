@@ -1,5 +1,6 @@
 package dev.hamza.applytrack.application;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -27,7 +28,9 @@ public final class ApplicationDtos {
             LocalDate appliedOn,
             LocalDate followUpOn,
             @Size(max = 4000) String notes,
-            @Size(max = 10, message = "at most 10 tags") List<@NotBlank @Size(max = 40) String> tags) {
+            @Size(max = 10, message = "at most 10 tags") List<@NotBlank @Size(max = 40) String> tags,
+            @Schema(description = "Required on update: the version you last read (optimistic locking)")
+            Long version) {
 
         @AssertTrue(message = "follow-up date cannot be before the applied date")
         boolean isFollowUpAfterApplied() {
@@ -35,7 +38,11 @@ public final class ApplicationDtos {
         }
     }
 
-    public record StatusUpdateRequest(@NotNull ApplicationStatus status) {
+    /**
+     * @param version the version the client last read; a mismatch means someone else changed the
+     *                application in the meantime and the request is rejected with 409
+     */
+    public record StatusUpdateRequest(@NotNull ApplicationStatus status, @NotNull Long version) {
     }
 
     public record InterviewRequest(
@@ -55,12 +62,14 @@ public final class ApplicationDtos {
             LocalDate followUpOn,
             List<String> tags,
             int interviewCount,
-            Instant updatedAt) {
+            Instant updatedAt,
+            long version) {
 
         static ApplicationSummary from(JobApplication a) {
             return new ApplicationSummary(a.getId(), a.getCompany(), a.getRole(), a.getLocation(),
                     a.getSalaryRange(), a.getStatus(), a.getAppliedOn(), a.getFollowUpOn(),
-                    a.getTags().stream().sorted().toList(), a.getInterviews().size(), a.getUpdatedAt());
+                    a.getTags().stream().sorted().toList(), a.getInterviews().size(), a.getUpdatedAt(),
+                    a.getVersion());
         }
     }
 
@@ -94,7 +103,8 @@ public final class ApplicationDtos {
             List<StatusChangeResponse> timeline,
             List<InterviewResponse> interviews,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt,
+            long version) {
 
         static ApplicationDetail from(JobApplication a) {
             return new ApplicationDetail(a.getId(), a.getCompany(), a.getRole(), a.getLocation(), a.getUrl(),
@@ -102,7 +112,7 @@ public final class ApplicationDtos {
                     a.getTags().stream().sorted().toList(),
                     a.getStatusChanges().stream().map(StatusChangeResponse::from).toList(),
                     a.getInterviews().stream().map(InterviewResponse::from).toList(),
-                    a.getCreatedAt(), a.getUpdatedAt());
+                    a.getCreatedAt(), a.getUpdatedAt(), a.getVersion());
         }
     }
 

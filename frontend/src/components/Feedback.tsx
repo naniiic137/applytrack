@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { errorMessage } from '../lib/errors';
 
 export function Spinner({ label = 'Loading' }: { label?: string }) {
   return (
@@ -21,7 +22,7 @@ export function EmptyState({ icon, title, children }: { icon?: ReactNode; title:
 }
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  const message = error instanceof Error ? error.message : 'Something went wrong';
+  const message = errorMessage(error);
   return (
     <div className="error-state" role="alert">
       <AlertTriangle size={18} aria-hidden="true" />

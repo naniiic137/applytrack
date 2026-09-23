@@ -3,6 +3,7 @@ import { ApiError } from '../api/client';
 import { STATUSES, type ApplicationDetail, type ApplicationInput, type ApplicationStatus } from '../api/types';
 import { useApplication, useSaveApplication } from '../hooks/queries';
 import { parseTags } from '../lib/board';
+import { errorMessage } from '../lib/errors';
 import { STATUS_META } from '../lib/status';
 import { Spinner } from './Feedback';
 import { Modal } from './Modal';
@@ -85,15 +86,18 @@ function ApplicationForm({
   const [form, setForm] = useState<FormState>(() => toState(initial));
   const save = useSaveApplication();
   const fieldErrors = save.error instanceof ApiError ? save.error.fieldErrors : {};
-  const generalError =
-    save.error && Object.keys(fieldErrors).length === 0 ? (save.error as Error).message : null;
+  const generalError = save.error && Object.keys(fieldErrors).length === 0 ? errorMessage(save.error) : null;
 
   const set = <K extends keyof FormState>(key: K) =>
     (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value as FormState[K] }));
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    save.mutate({ id: initial?.id, input: toInput(form) }, { onSuccess: (detail) => onSaved(detail.id) });
+    // `initial` is refreshed after a 409, so a retry sends the latest version
+    save.mutate(
+      { id: initial?.id, input: { ...toInput(form), version: initial?.version } },
+      { onSuccess: (detail) => onSaved(detail.id) },
+    );
   };
 
   const err = (name: string) =>

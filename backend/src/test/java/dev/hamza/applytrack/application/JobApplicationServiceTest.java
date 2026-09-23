@@ -4,6 +4,7 @@ import dev.hamza.applytrack.application.ApplicationDtos.ApplicationDetail;
 import dev.hamza.applytrack.application.ApplicationDtos.ApplicationRequest;
 import dev.hamza.applytrack.application.ApplicationDtos.ApplicationSummary;
 import dev.hamza.applytrack.application.ApplicationDtos.PageResponse;
+import dev.hamza.applytrack.common.BadRequestException;
 import dev.hamza.applytrack.common.NotFoundException;
 import dev.hamza.applytrack.user.User;
 import dev.hamza.applytrack.user.UserRepository;
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
@@ -60,16 +62,22 @@ class JobApplicationServiceTest {
     }
 
     private static ApplicationRequest request(String company, ApplicationStatus status, List<String> tags) {
-        return new ApplicationRequest(company, "Developer", null, null, null, status, null, null, null, tags);
+        return new ApplicationRequest(company, "Developer", null, null, null, status, null, null, null, tags, null);
+    }
+
+    /** Version as the client would see it after the previous request committed. */
+    private long version(Long id) {
+        em.flush();
+        return service.get(owner, id).version();
     }
 
     @Test
     void statusChangesAreRecordedInOrderAndSetAppliedOnOnce() {
         Long id = service.create(owner, request("Acme", null, List.of())).id();
 
-        service.changeStatus(owner, id, ApplicationStatus.APPLIED);
-        service.changeStatus(owner, id, ApplicationStatus.INTERVIEW);
-        service.changeStatus(owner, id, ApplicationStatus.INTERVIEW); // no-op
+        service.changeStatus(owner, id, ApplicationStatus.APPLIED, version(id));
+        service.changeStatus(owner, id, ApplicationStatus.INTERVIEW, version(id));
+        service.changeStatus(owner, id, ApplicationStatus.INTERVIEW, version(id)); // no-op
         em.flush();
         em.clear();
 
@@ -85,6 +93,21 @@ class JobApplicationServiceTest {
     }
 
     @Test
+    void staleOrMissingVersionsAreRejected() {
+        Long id = service.create(owner, request("Acme", null, List.of())).id();
+        service.changeStatus(owner, id, ApplicationStatus.APPLIED, 0L);
+        em.flush();
+
+        assertThatThrownBy(() -> service.changeStatus(owner, id, ApplicationStatus.OFFER, 0L))
+                .isInstanceOf(OptimisticLockingFailureException.class);
+        assertThatThrownBy(() -> service.changeStatus(owner, id, ApplicationStatus.OFFER, null))
+                .isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> service.update(owner, id, request("Acme 2", null, List.of())))
+                .isInstanceOf(BadRequestException.class);
+        assertThat(service.get(owner, id).status()).isEqualTo(ApplicationStatus.APPLIED);
+    }
+
+    @Test
     void tagsAreTrimmedLowercasedAndDeduplicated() {
         ApplicationDetail detail = service.create(owner, request("Acme", null, List.of(" Java", "JAVA", "Spring ", "")));
 
@@ -96,7 +119,7 @@ class JobApplicationServiceTest {
         Long id = service.create(owner, request("Acme", null, List.of())).id();
 
         assertThatThrownBy(() -> service.get(otherOwner, id)).isInstanceOf(NotFoundException.class);
-        assertThatThrownBy(() -> service.changeStatus(otherOwner, id, ApplicationStatus.OFFER))
+        assertThatThrownBy(() -> service.changeStatus(otherOwner, id, ApplicationStatus.OFFER, 0L))
                 .isInstanceOf(NotFoundException.class);
     }
 

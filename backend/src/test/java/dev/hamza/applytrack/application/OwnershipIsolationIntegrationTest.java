@@ -47,10 +47,10 @@ class OwnershipIsolationIntegrationTest extends ApiTestSupport {
     void otherUserCannotModifyOrDelete() throws Exception {
         mvc.perform(withToken(put("/api/applications/" + aliceApplication), bob)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"company\":\"Hijacked\",\"role\":\"Dev\"}"))
+                        .content("{\"company\":\"Hijacked\",\"role\":\"Dev\",\"version\":0}"))
                 .andExpect(status().isNotFound());
         mvc.perform(withToken(patch("/api/applications/" + aliceApplication + "/status"), bob)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"REJECTED\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(statusBody("REJECTED", 0)))
                 .andExpect(status().isNotFound());
         mvc.perform(withToken(post("/api/applications/" + aliceApplication + "/interviews"), bob)
                         .contentType(MediaType.APPLICATION_JSON)

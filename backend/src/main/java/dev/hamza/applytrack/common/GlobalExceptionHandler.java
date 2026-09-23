@@ -3,6 +3,7 @@ package dev.hamza.applytrack.common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -31,6 +32,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    /** Machine-readable marker the frontend uses to show its "updated elsewhere" message. */
+    public static final String STALE_VERSION = "stale_version";
+
     @ExceptionHandler(NotFoundException.class)
     ProblemDetail handleNotFound(NotFoundException ex) {
         return problem(HttpStatus.NOT_FOUND, "Not found", ex.getMessage());
@@ -39,6 +43,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     ProblemDetail handleConflict(ConflictException ex) {
         return problem(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
+    }
+
+    /** Someone else changed the resource since the client read it (or a concurrent write won). */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ProblemDetail handleOptimisticLock(OptimisticLockingFailureException ex) {
+        ProblemDetail problem = problem(HttpStatus.CONFLICT, "Conflict",
+                "This application was changed elsewhere (another tab or device). Reload it and try again.");
+        problem.setProperty("code", STALE_VERSION);
+        return problem;
     }
 
     @ExceptionHandler(BadRequestException.class)

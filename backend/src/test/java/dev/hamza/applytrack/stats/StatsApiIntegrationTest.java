@@ -2,7 +2,6 @@ package dev.hamza.applytrack.stats;
 
 import dev.hamza.applytrack.support.ApiTestSupport;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -11,7 +10,6 @@ import java.util.Map;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -27,11 +25,9 @@ class StatsApiIntegrationTest extends ApiTestSupport {
                 "followUpOn", today.plusDays(3).toString()));
         createApplication(token, Map.of("company", "A2", "role", "Dev", "status", "APPLIED"));
         long interviewed = createApplication(token, Map.of("company", "I", "role", "Dev", "status", "APPLIED"));
-        mvc.perform(withToken(patch("/api/applications/" + interviewed + "/status"), token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"INTERVIEW\"}"));
+        changeStatus(token, interviewed, "INTERVIEW");
         // reached INTERVIEW, then went quiet: still counts as a response
-        mvc.perform(withToken(patch("/api/applications/" + interviewed + "/status"), token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"GHOSTED\"}"));
+        changeStatus(token, interviewed, "GHOSTED");
 
         mvc.perform(withToken(get("/api/stats"), token))
                 .andExpect(status().isOk())

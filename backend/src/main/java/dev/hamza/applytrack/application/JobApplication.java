@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -82,6 +83,11 @@ public class JobApplication {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /** Optimistic-lock version, incremented by JPA on every update. */
+    @Version
+    @Column(nullable = false)
+    private long version;
 
     protected JobApplication() {
     }
@@ -218,5 +224,9 @@ public class JobApplication {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }

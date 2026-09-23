@@ -14,6 +14,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import java.util.Map;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -51,6 +53,26 @@ public abstract class ApiTestSupport {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return json.readTree(response).get("id").asLong();
+    }
+
+    /** Current optimistic-lock version of an application, as a client would have read it. */
+    protected long version(String token, long id) throws Exception {
+        String response = mvc.perform(withToken(get("/api/applications/" + id), token))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return json.readTree(response).get("version").asLong();
+    }
+
+    /** PATCH /status with the current version, the way the UI does it. */
+    protected void changeStatus(String token, long id, String newStatus) throws Exception {
+        mvc.perform(withToken(patch("/api/applications/" + id + "/status"), token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(statusBody(newStatus, version(token, id))))
+                .andExpect(status().isOk());
+    }
+
+    protected String statusBody(String newStatus, long version) throws Exception {
+        return json.writeValueAsString(Map.of("status", newStatus, "version", version));
     }
 
     protected JsonNode readJson(String content) throws Exception {

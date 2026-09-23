@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/endpoints';
 import type {
+  ApplicationDetail,
   ApplicationInput,
   ApplicationQuery,
   ApplicationStatus,
@@ -45,6 +46,23 @@ export function useStats() {
   return useQuery({ queryKey: keys.stats, queryFn: api.stats });
 }
 
+/** Copies the server's answer (new status, version...) into every cached list, so the next move is not stale. */
+function syncListsWith(qc: ReturnType<typeof useQueryClient>, detail: ApplicationDetail) {
+  qc.setQueryData(keys.application(detail.id), detail);
+  qc.setQueriesData<Page<ApplicationSummary>>({ queryKey: ['applications', 'list'] }, (page) =>
+    page
+      ? {
+          ...page,
+          content: page.content.map((a) =>
+            a.id === detail.id
+              ? { ...a, status: detail.status, appliedOn: detail.appliedOn, updatedAt: detail.updatedAt, version: detail.version }
+              : a,
+          ),
+        }
+      : page,
+  );
+}
+
 function useInvalidateAll() {
   const qc = useQueryClient();
   return () => {
@@ -55,13 +73,16 @@ function useInvalidateAll() {
 
 /**
  * Status change with an optimistic update: every cached list moves the card immediately,
- * and is rolled back if the server rejects the change.
+ * and is rolled back if the server rejects the change. `version` is the one the card was read with;
+ * if someone changed the application meanwhile the API answers 409 and the refetch in onSettled
+ * brings the fresh data (see lib/errors for the message).
  */
 export function useChangeStatus() {
   const qc = useQueryClient();
   const invalidate = useInvalidateAll();
   return useMutation({
-    mutationFn: ({ id, status }: { id: number; status: ApplicationStatus }) => api.changeStatus(id, status),
+    mutationFn: ({ id, status, version }: { id: number; status: ApplicationStatus; version: number }) =>
+      api.changeStatus(id, status, version),
     onMutate: async ({ id, status }) => {
       await qc.cancelQueries({ queryKey: ['applications', 'list'] });
       const snapshot = qc.getQueriesData<Page<ApplicationSummary>>({ queryKey: ['applications', 'list'] });
@@ -73,7 +94,7 @@ export function useChangeStatus() {
     onError: (_error, _vars, context) => {
       context?.snapshot.forEach(([key, data]) => qc.setQueryData(key, data));
     },
-    onSuccess: (detail) => qc.setQueryData(keys.application(detail.id), detail),
+    onSuccess: (detail) => syncListsWith(qc, detail),
     onSettled: invalidate,
   });
 }

@@ -35,6 +35,8 @@ export interface ApplicationSummary {
   tags: string[];
   interviewCount: number;
   updatedAt: IsoInstant;
+  /** Optimistic-lock version: send it back on updates; a stale one gets a 409. */
+  version: number;
 }
 
 export interface StatusChange {
@@ -67,6 +69,7 @@ export interface ApplicationDetail {
   interviews: Interview[];
   createdAt: IsoInstant;
   updatedAt: IsoInstant;
+  version: number;
 }
 
 export interface ApplicationInput {
@@ -80,6 +83,8 @@ export interface ApplicationInput {
   followUpOn?: IsoDate | null;
   notes?: string | null;
   tags?: string[];
+  /** Required when updating: the version the form was loaded with. */
+  version?: number;
 }
 
 export interface InterviewInput {
@@ -138,4 +143,6 @@ export interface Problem {
   status?: number;
   detail?: string;
   errors?: Record<string, string>;
+  /** Machine-readable reason, e.g. "stale_version" for an optimistic-locking conflict. */
+  code?: string;
 }

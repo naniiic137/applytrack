@@ -36,14 +36,14 @@ describe('request', () => {
   it('sends the bearer token and JSON body', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { id: 7, status: 'OFFER' }));
 
-    const result = await api.changeStatus(7, 'OFFER');
+    const result = await api.changeStatus(7, 'OFFER', 3);
 
     expect(result).toEqual({ id: 7, status: 'OFFER' });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/applications/7/status');
     expect(init.method).toBe('PATCH');
     expect(init.headers.Authorization).toBe('Bearer token-123');
-    expect(JSON.parse(init.body)).toEqual({ status: 'OFFER' });
+    expect(JSON.parse(init.body)).toEqual({ status: 'OFFER', version: 3 });
   });
 
   it('does not send the token for anonymous calls', async () => {

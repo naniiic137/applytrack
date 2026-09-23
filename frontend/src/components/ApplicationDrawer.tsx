@@ -56,7 +56,9 @@ function DrawerContent({ app, onClose, onEdit }: { app: ApplicationDetail; onClo
           <StatusDot status={app.status} />
           <select
             value={app.status}
-            onChange={(e) => changeStatus.mutate({ id: app.id, status: e.target.value as ApplicationDetail['status'] })}
+            onChange={(e) =>
+              changeStatus.mutate({ id: app.id, status: e.target.value as ApplicationDetail['status'], version: app.version })
+            }
             disabled={changeStatus.isPending}
           >
             {STATUSES.map((s) => (
@@ -84,6 +86,8 @@ function DrawerContent({ app, onClose, onEdit }: { app: ApplicationDetail; onClo
           </button>
         </div>
       </div>
+
+      {changeStatus.isError && <ErrorState error={changeStatus.error} />}
 
       <dl className="facts">
         <div>
