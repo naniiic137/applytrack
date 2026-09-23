@@ -8,6 +8,7 @@ import dev.hamza.applytrack.common.ConflictException;
 import dev.hamza.applytrack.common.NotFoundException;
 import dev.hamza.applytrack.user.User;
 import dev.hamza.applytrack.user.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,8 @@ import java.util.Locale;
 
 @Service
 public class AuthService {
+
+    private static final String DUPLICATE_EMAIL = "An account with this email already exists";
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
@@ -36,10 +39,16 @@ public class AuthService {
     public AuthResponse register(RegisterRequest request) {
         String email = normalize(request.email());
         if (users.existsByEmailIgnoreCase(email)) {
-            throw new ConflictException("An account with this email already exists");
+            throw new ConflictException(DUPLICATE_EMAIL);
         }
-        User user = users.save(new User(email, passwordEncoder.encode(request.password()),
-                request.displayName().trim(), clock.instant()));
+        User user;
+        try {
+            // flush now so a concurrent registration that won the race hits the unique constraint here
+            user = users.saveAndFlush(new User(email, passwordEncoder.encode(request.password()),
+                    request.displayName().trim(), clock.instant()));
+        } catch (DataIntegrityViolationException e) {
+            throw new ConflictException(DUPLICATE_EMAIL);
+        }
         return tokenFor(user);
     }
 

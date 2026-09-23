@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -73,6 +74,35 @@ class AuthFlowIntegrationTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.errors.email", notNullValue()))
                 .andExpect(jsonPath("$.errors.password", is("must be between 8 and 72 characters")))
                 .andExpect(jsonPath("$.errors.displayName", is("must not be blank")));
+    }
+
+    @Test
+    void passwordLimitIsCountedInUtf8BytesNotCharacters() throws Exception {
+        String eAcute = "é"; // 2 bytes in UTF-8
+
+        // 40 characters but 80 bytes: BCrypt would refuse it, so validation must catch it first (not a 500)
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("email", "bytes-" + UUID.randomUUID() + "@example.com",
+                                "password", eAcute.repeat(40), "displayName", "Bytes"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.password", startsWith("must be at most 72 bytes")));
+
+        // exactly 72 bytes (36 x 2-byte characters) is accepted and can log in
+        String email = "bytes-ok-" + UUID.randomUUID() + "@example.com";
+        registerAndGetToken(email, eAcute.repeat(36));
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("email", email, "password", eAcute.repeat(36)))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void overlongPasswordOnLoginIsJustA401() throws Exception {
+        String email = "long-" + UUID.randomUUID() + "@example.com";
+        registerAndGetToken(email, "secret-pass-1");
+
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("email", email, "password", "é".repeat(100)))))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
