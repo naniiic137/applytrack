@@ -52,4 +52,22 @@ class JwtServiceTest {
     void missingSecretFailsFast() {
         assertThatThrownBy(() -> service("", NOW)).isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void nonBase64SecretFailsFastWithAHowTo() {
+        // the old .env.example placeholder: '-' is not in the Base64 alphabet
+        assertThatThrownBy(() -> service("change-me-to-a-long-random-base64-value", NOW))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not valid Base64")
+                .hasMessageContaining("openssl rand -base64 48");
+    }
+
+    @Test
+    void tooShortSecretFailsFast() {
+        String sixteenBytes = "MDEyMzQ1Njc4OWFiY2RlZg=="; // "0123456789abcdef"
+        assertThatThrownBy(() -> service(sixteenBytes, NOW))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("decodes to 16 bytes")
+                .hasMessageContaining("at least 32 bytes");
+    }
 }
