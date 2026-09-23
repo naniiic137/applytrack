@@ -220,4 +220,6 @@ applytrack/
 
 Hamza Ben Ismail ([@naniiic137](https://github.com/naniiic137))
 
-License: not chosen yet.
+## License
+
+© 2026 Hamza Ben Ismail. All rights reserved.
