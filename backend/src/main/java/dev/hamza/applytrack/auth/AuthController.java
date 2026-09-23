@@ -5,6 +5,7 @@ import dev.hamza.applytrack.auth.AuthDtos.LoginRequest;
 import dev.hamza.applytrack.auth.AuthDtos.RegisterRequest;
 import dev.hamza.applytrack.auth.AuthDtos.UserResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -32,9 +33,13 @@ public class AuthController {
         return authService.register(request);
     }
 
+    /**
+     * Failed attempts are rate limited per account and per client IP (429 + Retry-After).
+     * Behind nginx the client IP comes from X-Forwarded-For (server.forward-headers-strategy in prod).
+     */
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request);
+    public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
+        return authService.login(request, http.getRemoteAddr());
     }
 
     @GetMapping("/me")

@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -26,12 +28,18 @@ public class AuthService {
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final LoginAttemptLimiter loginLimiter;
     private final Clock clock;
 
-    public AuthService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService, Clock clock) {
+    /** Hash of a random password, compared against when the email is unknown (see {@link #login}). */
+    private volatile String dummyHash;
+
+    public AuthService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService,
+                       LoginAttemptLimiter loginLimiter, Clock clock) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.loginLimiter = loginLimiter;
         this.clock = clock;
     }
 
@@ -52,12 +60,34 @@ public class AuthService {
         return tokenFor(user);
     }
 
+    /**
+     * Unknown email and wrong password give the same 401, and take the same time: when the account does not
+     * exist, the password is still checked against a dummy BCrypt hash, so response timing does not reveal
+     * which emails are registered.
+     */
     @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
-        User user = users.findByEmailIgnoreCase(normalize(request.email()))
-                .filter(u -> passwordEncoder.matches(request.password(), u.getPasswordHash()))
-                .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
-        return tokenFor(user);
+    public AuthResponse login(LoginRequest request, String clientIp) {
+        String email = normalize(request.email());
+        loginLimiter.checkAllowed(clientIp, email);
+
+        Optional<User> user = users.findByEmailIgnoreCase(email);
+        String hash = user.map(User::getPasswordHash).orElseGet(this::dummyHash);
+        boolean matches = passwordEncoder.matches(request.password(), hash);
+        if (user.isEmpty() || !matches) {
+            loginLimiter.recordFailure(clientIp, email);
+            throw new BadCredentialsException("Invalid email or password");
+        }
+        loginLimiter.recordSuccess(email);
+        return tokenFor(user.get());
+    }
+
+    private String dummyHash() {
+        String hash = dummyHash;
+        if (hash == null) {
+            hash = passwordEncoder.encode(UUID.randomUUID().toString());
+            dummyHash = hash;
+        }
+        return hash;
     }
 
     @Transactional(readOnly = true)
