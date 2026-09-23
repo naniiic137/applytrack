@@ -5,6 +5,7 @@ import dev.hamza.applytrack.application.ApplicationDtos.ApplicationRequest;
 import dev.hamza.applytrack.application.ApplicationDtos.ApplicationSummary;
 import dev.hamza.applytrack.application.ApplicationDtos.PageResponse;
 import dev.hamza.applytrack.common.BadRequestException;
+import dev.hamza.applytrack.common.FieldValidationException;
 import dev.hamza.applytrack.common.NotFoundException;
 import dev.hamza.applytrack.user.User;
 import dev.hamza.applytrack.user.UserRepository;
@@ -125,6 +126,25 @@ class JobApplicationServiceTest {
         assertThat(inUtc.appliedOn()).isEqualTo(LocalDate.of(2026, 3, 4));
         assertThat(lateNight.changeStatus(owner, dragged, ApplicationStatus.APPLIED, 0L, TUNIS).appliedOn())
                 .isEqualTo(LocalDate.of(2026, 3, 5));
+    }
+
+    @Test
+    void followUpBeforeTheDefaultedAppliedDateIsRejected() {
+        ApplicationRequest applied = new ApplicationRequest("Acme", "Dev", null, null, null, ApplicationStatus.APPLIED,
+                null, TODAY.minusDays(1), null, List.of(), null);
+
+        // appliedOn is empty in the request, so the DTO check passes; the service fills in today and re-checks
+        assertThatThrownBy(() -> service.create(owner, applied, UTC))
+                .isInstanceOf(FieldValidationException.class)
+                .hasMessage("follow-up date cannot be before the applied date");
+
+        Long id = service.create(owner, new ApplicationRequest("Acme", "Dev", null, null, null, null,
+                null, TODAY.minusDays(1), null, List.of(), null), UTC).id(); // Wishlist: no applied date, fine
+        em.flush();
+        ApplicationRequest moveToApplied = new ApplicationRequest("Acme", "Dev", null, null, null,
+                ApplicationStatus.APPLIED, null, TODAY.minusDays(1), null, List.of(), 0L);
+        assertThatThrownBy(() -> service.update(owner, id, moveToApplied, UTC))
+                .isInstanceOf(FieldValidationException.class);
     }
 
     @Test

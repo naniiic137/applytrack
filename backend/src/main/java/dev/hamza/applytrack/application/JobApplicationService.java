@@ -7,6 +7,7 @@ import dev.hamza.applytrack.application.ApplicationDtos.InterviewRequest;
 import dev.hamza.applytrack.application.ApplicationDtos.InterviewResponse;
 import dev.hamza.applytrack.application.ApplicationDtos.PageResponse;
 import dev.hamza.applytrack.common.BadRequestException;
+import dev.hamza.applytrack.common.FieldValidationException;
 import dev.hamza.applytrack.common.NotFoundException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -63,6 +64,7 @@ public class JobApplicationService {
         if (appliedOn == null && status != ApplicationStatus.WISHLIST) {
             appliedOn = today(zone);
         }
+        checkFollowUpNotBeforeApplied(appliedOn, request.followUpOn());
         applyDetails(application, request, appliedOn, now);
         return ApplicationDetail.from(applications.save(application));
     }
@@ -75,9 +77,15 @@ public class JobApplicationService {
         if (request.status() != null) {
             application.moveTo(request.status(), now, today(zone));
         }
+        // moveTo may have filled in today as the applied date; nothing is flushed if this throws
+        checkFollowUpNotBeforeApplied(application.getAppliedOn(), application.getFollowUpOn());
         return flushedDetail(application);
     }
 
+    /**
+     * Status moves (Kanban drops) are not blocked by the follow-up rule: if a Wishlist card with a past follow-up
+     * date is dragged to Applied, today becomes the applied date and the follow-up simply shows as overdue.
+     */
     public ApplicationDetail changeStatus(Long ownerId, Long id, ApplicationStatus status, Long expectedVersion,
                                           ZoneId zone) {
         JobApplication application = load(ownerId, id);
@@ -113,6 +121,16 @@ public class JobApplicationService {
     private JobApplication load(Long ownerId, Long id) {
         return applications.findByIdAndOwnerId(id, ownerId)
                 .orElseThrow(() -> new NotFoundException("Application not found"));
+    }
+
+    /**
+     * The request DTO validates the dates as sent, but the applied date may be filled in afterwards (today, when
+     * the status is past Wishlist), so the rule is checked again on the final values.
+     */
+    private static void checkFollowUpNotBeforeApplied(LocalDate appliedOn, LocalDate followUpOn) {
+        if (appliedOn != null && followUpOn != null && followUpOn.isBefore(appliedOn)) {
+            throw new FieldValidationException("followUpAfterApplied", ApplicationDtos.FOLLOW_UP_BEFORE_APPLIED);
+        }
     }
 
     /**

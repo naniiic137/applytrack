@@ -54,6 +54,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(FieldValidationException.class)
+    ProblemDetail handleFieldValidation(FieldValidationException ex) {
+        ProblemDetail body = problem(HttpStatus.BAD_REQUEST, "Validation failed", "One or more fields are invalid");
+        body.setProperty("errors", ex.getErrors());
+        return body;
+    }
+
     @ExceptionHandler(BadRequestException.class)
     ProblemDetail handleBadRequest(BadRequestException ex) {
         return problem(HttpStatus.BAD_REQUEST, "Bad request", ex.getMessage());

@@ -92,6 +92,20 @@ class JobApplicationApiIntegrationTest extends ApiTestSupport {
     }
 
     @Test
+    void followUpBeforeTheAutoFilledAppliedDateIsAFieldError() throws Exception {
+        String yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1).toString();
+
+        mvc.perform(withToken(post("/api/applications"), token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("company", "Acme", "role", "Dev",
+                                "status", "APPLIED", "followUpOn", yesterday))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title", is("Validation failed")))
+                .andExpect(jsonPath("$.errors.followUpAfterApplied",
+                        is("follow-up date cannot be before the applied date")));
+    }
+
+    @Test
     void updateReplacesEditableFields() throws Exception {
         long id = createApplication(token, Map.of("company", "Acme", "role", "Dev", "tags", List.of("old")));
 

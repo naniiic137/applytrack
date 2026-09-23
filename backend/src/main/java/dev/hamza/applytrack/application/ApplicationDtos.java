@@ -18,6 +18,8 @@ public final class ApplicationDtos {
     private ApplicationDtos() {
     }
 
+    public static final String FOLLOW_UP_BEFORE_APPLIED = "follow-up date cannot be before the applied date";
+
     public record ApplicationRequest(
             @NotBlank @Size(max = 120) String company,
             @NotBlank @Size(max = 120) String role,
@@ -32,7 +34,8 @@ public final class ApplicationDtos {
             @Schema(description = "Required on update: the version you last read (optimistic locking)")
             Long version) {
 
-        @AssertTrue(message = "follow-up date cannot be before the applied date")
+        /** Checks the dates as sent; the service checks again once a default applied date is filled in. */
+        @AssertTrue(message = FOLLOW_UP_BEFORE_APPLIED)
         boolean isFollowUpAfterApplied() {
             return appliedOn == null || followUpOn == null || !followUpOn.isBefore(appliedOn);
         }
