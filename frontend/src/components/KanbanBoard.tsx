@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -12,7 +12,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { CalendarClock, MapPin } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, MapPin } from 'lucide-react';
 import { STATUSES, type ApplicationStatus, type ApplicationSummary } from '../api/types';
 import { groupByStatus } from '../lib/board';
 import { daysUntil, formatDate, relativeDay } from '../lib/dates';
@@ -25,9 +25,16 @@ interface Props {
   onOpen: (id: number) => void;
 }
 
+/** How a card is named to screen readers: "Northwind Labs, Junior Developer". */
+export function describeCard(app: ApplicationSummary | undefined): string {
+  return app ? `${app.company}, ${app.role}` : 'application';
+}
+
 export function KanbanBoard({ applications, onMove, onOpen }: Props) {
   const columns = useMemo(() => groupByStatus(applications), [applications]);
   const [active, setActive] = useState<ApplicationSummary | null>(null);
+  const byId = (id: string | number) => applications.find((a) => a.id === id);
+  const column = (id: string | number) => STATUS_META[id as ApplicationStatus].label;
 
   const sensors = useSensors(
     // A small distance threshold keeps plain clicks working (they open the drawer).
@@ -56,16 +63,20 @@ export function KanbanBoard({ applications, onMove, onOpen }: Props) {
       onDragCancel={() => setActive(null)}
       accessibility={{
         announcements: {
-          onDragStart: ({ active: a }) => `Picked up application ${a.id}.`,
-          onDragOver: ({ over }) => (over ? `Over ${STATUS_META[over.id as ApplicationStatus].label}.` : ''),
-          onDragEnd: ({ over }) => (over ? `Moved to ${STATUS_META[over.id as ApplicationStatus].label}.` : 'Dropped.'),
-          onDragCancel: () => 'Move cancelled.',
+          onDragStart: ({ active: a }) => `Picked up ${describeCard(byId(a.id))}.`,
+          onDragOver: ({ active: a, over }) =>
+            over ? `${describeCard(byId(a.id))} is over the ${column(over.id)} column.` : '',
+          onDragEnd: ({ active: a, over }) =>
+            over
+              ? `${describeCard(byId(a.id))} dropped in the ${column(over.id)} column.`
+              : `${describeCard(byId(a.id))} dropped.`,
+          onDragCancel: ({ active: a }) => `Moving ${describeCard(byId(a.id))} was cancelled.`,
         },
       }}
     >
       <div className="board" role="list" aria-label="Applications by status">
         {STATUSES.map((status) => (
-          <Column key={status} status={status} items={columns[status]} onOpen={onOpen} />
+          <Column key={status} status={status} items={columns[status]} onOpen={onOpen} onMove={onMove} />
         ))}
       </div>
       <DragOverlay dropAnimation={{ duration: 160, easing: 'ease-out' }}>
@@ -79,10 +90,12 @@ function Column({
   status,
   items,
   onOpen,
+  onMove,
 }: {
   status: ApplicationStatus;
   items: ApplicationSummary[];
   onOpen: (id: number) => void;
+  onMove: (id: number, status: ApplicationStatus) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
@@ -94,7 +107,10 @@ function Column({
       </header>
       <div className="column-body">
         {items.map((app) => (
-          <DraggableCard key={app.id} app={app} onOpen={onOpen} />
+          <div key={app.id} className="card-shell">
+            <DraggableCard app={app} onOpen={onOpen} />
+            <MoveMenu app={app} onMove={onMove} />
+          </div>
         ))}
         {items.length === 0 && <p className="column-empty">Drop here</p>}
       </div>
@@ -118,6 +134,85 @@ function DraggableCard({ app, onOpen }: { app: ApplicationSummary; onOpen: (id: 
       }}
     >
       <Card app={app} />
+    </div>
+  );
+}
+
+/**
+ * Keyboard- and screen-reader-friendly alternative to drag and drop: a "Move to" menu button next to each
+ * card (a sibling of the draggable, so no interactive element is nested inside another).
+ */
+function MoveMenu({ app, onMove }: { app: ApplicationSummary; onMove: (id: number, status: ApplicationStatus) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
+  const targets = STATUSES.filter((s) => s !== app.status);
+
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  const close = () => {
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  const onMenuKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    const focusAt = (i: number) => items[(i + items.length) % items.length]?.focus();
+    if (e.key === 'ArrowDown') focusAt(index + 1);
+    else if (e.key === 'ArrowUp') focusAt(index - 1);
+    else if (e.key === 'Home') focusAt(0);
+    else if (e.key === 'End') focusAt(items.length - 1);
+    else if (e.key === 'Escape') {
+      e.stopPropagation(); // do not also close a surrounding dialog
+      close();
+    } else if (e.key === 'Tab') setOpen(false);
+    else return;
+    if (e.key !== 'Tab') e.preventDefault();
+  };
+
+  return (
+    <div ref={rootRef} className="move-menu">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="icon-btn move-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Move ${describeCard(app)} to another column`}
+        title="Move to..."
+        onClick={() => setOpen((o) => !o)}
+      >
+        <ArrowRightLeft size={14} aria-hidden="true" />
+      </button>
+      {open && (
+        <ul ref={menuRef} role="menu" aria-label={`Move ${app.company} to`} className="move-list" onKeyDown={onMenuKeyDown}>
+          {targets.map((s) => (
+            <li key={s} role="none">
+              <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                onClick={() => {
+                  close();
+                  onMove(app.id, s);
+                }}
+              >
+                <StatusDot status={s} /> {STATUS_META[s].label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
