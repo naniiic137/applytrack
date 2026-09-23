@@ -1404,6 +1404,27 @@ input[type='datetime-local']::-webkit-calendar-picker-indicator {
 .empty-state .btn {
   margin-top: 8px;
 }
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent);
+}
+.notice a {
+  color: var(--accent);
+}
+
 .error-state {
   display: flex;
   align-items: center;

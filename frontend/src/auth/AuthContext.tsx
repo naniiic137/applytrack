@@ -1,10 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { configureClient } from '../api/client';
 import { api } from '../api/endpoints';
 import type { AuthResponse, User } from '../api/types';
 
-const STORAGE_KEY = 'applytrack.session';
+export const STORAGE_KEY = 'applytrack.session';
 
 interface Session {
   token: string;
@@ -53,6 +53,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Configure synchronously so the very first request already carries the token.
   configureClient({ getToken: () => session?.token ?? null, onUnauthorized: logout });
+
+  // Keep tabs in sync: localStorage fires 'storage' in the *other* tabs of the same origin.
+  // Logging out in one tab logs out all of them; a login in another tab (maybe as someone else) is adopted.
+  const tokenRef = useRef(session?.token);
+  tokenRef.current = session?.token;
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== STORAGE_KEY) return; // key null = storage.clear()
+      const next = readSession();
+      if (next?.token === tokenRef.current) return;
+      queryClient.clear(); // cached data belongs to the previous session
+      setSession(next);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [queryClient]);
 
   // Expire the session client-side at the same moment the JWT expires.
   useEffect(() => {

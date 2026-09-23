@@ -1,4 +1,5 @@
-import { Inbox, Plus } from 'lucide-react';
+import { Info, Inbox, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { KanbanBoard } from '../components/KanbanBoard';
 import { EmptyState, ErrorState, Spinner } from '../components/Feedback';
 import { PageHeader } from '../components/PageHeader';
@@ -11,6 +12,8 @@ export function BoardPage() {
   const panels = usePanels();
 
   const total = data?.totalElements ?? 0;
+  // The board loads one page (the API caps a page at 200); say so instead of silently hiding cards.
+  const shown = data?.content.length ?? 0;
 
   return (
     <>
@@ -32,6 +35,15 @@ export function BoardPage() {
             Add your first application
           </button>
         </EmptyState>
+      )}
+      {data && total > shown && (
+        <p className="notice" role="status">
+          <Info size={16} aria-hidden="true" />
+          <span>
+            Showing the {shown} most recently updated of {total} applications.{' '}
+            <Link to="/applications">Open the list view</Link> to search and page through all of them.
+          </span>
+        </p>
       )}
       {data && total > 0 && (
         <KanbanBoard
