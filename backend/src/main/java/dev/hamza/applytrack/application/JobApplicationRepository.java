@@ -43,13 +43,18 @@ public interface JobApplicationRepository extends JpaRepository<JobApplication, 
     List<JobApplication> findFollowUpsDueBy(@Param("ownerId") Long ownerId, @Param("until") LocalDate until,
                                             @Param("statuses") Collection<ApplicationStatus> statuses, Limit limit);
 
-    /** Number of applications that ever reached one of the given statuses, based on the timeline. */
+    /**
+     * Timelines of the owner's applications whose current status is not one of {@code excluded},
+     * grouped by application and in chronological order.
+     */
     @Query("""
-            select count(distinct sc.application.id) from StatusChange sc
-            where sc.application.ownerId = :ownerId and sc.toStatus in :statuses
+            select new dev.hamza.applytrack.application.TimelineEntry(a.id, sc.fromStatus, sc.toStatus, sc.changedAt)
+            from StatusChange sc join sc.application a
+            where a.ownerId = :ownerId and a.status not in :excluded
+            order by a.id asc, sc.changedAt asc, sc.id asc
             """)
-    long countEverReached(@Param("ownerId") Long ownerId,
-                          @Param("statuses") Collection<ApplicationStatus> statuses);
+    List<TimelineEntry> findTimelinesExcludingCurrentStatus(@Param("ownerId") Long ownerId,
+                                                            @Param("excluded") Collection<ApplicationStatus> excluded);
 
     @Query("""
             select distinct t from JobApplication a join a.tags t

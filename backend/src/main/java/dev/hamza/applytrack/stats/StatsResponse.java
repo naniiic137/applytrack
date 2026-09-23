@@ -11,8 +11,10 @@ import java.util.Map;
 /**
  * Dashboard numbers for the current user.
  *
- * @param responseRate  % of submitted applications that ever reached INTERVIEW, OFFER or REJECTED
- * @param interviewRate % of submitted applications that ever reached INTERVIEW or OFFER
+ * @param submitted     applications whose current status is not WISHLIST (the denominator of both rates)
+ * @param responseRate  % of submitted applications that reached INTERVIEW, OFFER or REJECTED
+ * @param interviewRate % of submitted applications that reached INTERVIEW or OFFER
+ *                      (for both rates, a move undone within 24 hours does not count; see StatsService)
  */
 public record StatsResponse(
         long total,

@@ -60,6 +60,23 @@ class StatsServiceTest {
         return applications.save(a);
     }
 
+    /** A move at an explicit time, for timelines where the gaps between changes matter. */
+    private record Move(ApplicationStatus status, Duration ago) {
+    }
+
+    private static Move move(ApplicationStatus status, Duration ago) {
+        return new Move(status, ago);
+    }
+
+    private JobApplication appWithTimeline(String company, Move... moves) {
+        JobApplication a = new JobApplication(owner, company, "Dev", ApplicationStatus.WISHLIST,
+                NOW.minus(Duration.ofDays(60)));
+        for (Move m : moves) {
+            a.moveTo(m.status(), NOW.minus(m.ago()), TODAY.minusDays(30));
+        }
+        return applications.save(a);
+    }
+
     @Test
     void appliedDatesAreBucketedIntoZeroFilledMondayWeeks() {
         app("This week (Mon)", THIS_MONDAY, ApplicationStatus.APPLIED);
@@ -130,10 +147,68 @@ class StatsServiceTest {
     }
 
     @Test
-    void percentageHandlesZeroAndRounding() {
+    void aMoveUndoneWithinADayIsTreatedAsAMisDrag() {
+        appWithTimeline("Mis-drag",
+                move(ApplicationStatus.APPLIED, Duration.ofDays(10)),
+                move(ApplicationStatus.INTERVIEW, Duration.ofMinutes(90)),
+                move(ApplicationStatus.APPLIED, Duration.ofMinutes(80)));   // undone 10 minutes later
+        appWithTimeline("Real interview, then back to applied",
+                move(ApplicationStatus.APPLIED, Duration.ofDays(10)),
+                move(ApplicationStatus.INTERVIEW, Duration.ofDays(6)),
+                move(ApplicationStatus.APPLIED, Duration.ofDays(2)));       // kept for 4 days: it happened
+        em.flush();
+
+        StatsResponse result = stats.forUser(owner);
+
+        assertThat(result.submitted()).isEqualTo(2);
+        assertThat(result.interviewRate()).isEqualTo(50.0);
+        assertThat(result.responseRate()).isEqualTo(50.0);
+    }
+
+    @Test
+    void aQuickRealProgressionStillCountsEveryStep() {
+        // interview and rejection on the same afternoon: not an undo, the status never went back
+        appWithTimeline("Same-day rejection",
+                move(ApplicationStatus.APPLIED, Duration.ofDays(3)),
+                move(ApplicationStatus.INTERVIEW, Duration.ofHours(3)),
+                move(ApplicationStatus.REJECTED, Duration.ofHours(1)));
+        em.flush();
+
+        StatsResponse result = stats.forUser(owner);
+
+        assertThat(result.responseRate()).isEqualTo(100.0);
+        assertThat(result.interviewRate()).isEqualTo(100.0);
+    }
+
+    @Test
+    void applicationsMovedBackToTheWishlistAreLeftOutSoRatesNeverExceed100() {
+        // before the fix these two counted in the numerator but not in the denominator (200%)
+        appWithTimeline("Back to wishlist 1",
+                move(ApplicationStatus.APPLIED, Duration.ofDays(20)),
+                move(ApplicationStatus.INTERVIEW, Duration.ofDays(15)),
+                move(ApplicationStatus.WISHLIST, Duration.ofDays(5)));
+        appWithTimeline("Back to wishlist 2",
+                move(ApplicationStatus.APPLIED, Duration.ofDays(20)),
+                move(ApplicationStatus.OFFER, Duration.ofDays(15)),
+                move(ApplicationStatus.WISHLIST, Duration.ofDays(5)));
+        appWithTimeline("Waiting", move(ApplicationStatus.APPLIED, Duration.ofDays(4)));
+        em.flush();
+
+        StatsResponse result = stats.forUser(owner);
+
+        assertThat(result.total()).isEqualTo(3);
+        assertThat(result.submitted()).isEqualTo(1);
+        assertThat(result.responseRate()).isZero();
+        assertThat(result.interviewRate()).isZero();
+    }
+
+    @Test
+    void percentageHandlesZeroRoundingAndIsClamped() {
         assertThat(StatsService.percentage(0, 0)).isZero();
         assertThat(StatsService.percentage(1, 3)).isEqualTo(33.3);
         assertThat(StatsService.percentage(2, 3)).isEqualTo(66.7);
         assertThat(StatsService.percentage(5, 5)).isEqualTo(100.0);
+        assertThat(StatsService.percentage(7, 5)).isEqualTo(100.0);
+        assertThat(StatsService.percentage(-1, 5)).isZero();
     }
 }
