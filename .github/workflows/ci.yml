@@ -22,14 +22,28 @@ jobs:
       # H2 tests plus PostgresIntegrationTest (Testcontainers, the runner has Docker); JaCoCo report
       - name: Run tests
         run: ./mvnw -B test
-      - name: Coverage summary
+      # Testcontainers skips these tests when Docker is missing; in CI that would hide a problem, so fail instead
+      - name: Check the PostgreSQL tests ran
+        run: |
+          report=target/surefire-reports/TEST-dev.hamza.applytrack.PostgresIntegrationTest.xml
+          grep -q 'skipped="0"' "$report" && grep -q 'failures="0"' "$report" && grep -q 'errors="0"' "$report" \
+            || { echo "::error::PostgresIntegrationTest was skipped or failed"; exit 1; }
+      - name: Test and coverage summary
         if: always()
         run: |
           csv=target/site/jacoco/jacoco.csv
           [ -f "$csv" ] || exit 0
-          awk -F, 'NR > 1 { missed += $8; covered += $9 } END {
-            printf "### Backend line coverage: %.1f%% (%d of %d lines)\n", 100 * covered / (missed + covered), covered, missed + covered
-          }' "$csv" >> "$GITHUB_STEP_SUMMARY"
+          sum() {
+            grep -ho '<testsuite [^>]*' target/surefire-reports/TEST-*.xml | grep -o " $1=\"[0-9]*\"" \
+              | grep -o '[0-9]*' | awk '{ s += $1 } END { print s }'
+          }
+          tests=$(sum tests)
+          skipped=$(sum skipped)
+          line=$(awk -F, 'NR > 1 { missed += $8; covered += $9 } END {
+            printf "%.1f%% line coverage (%d of %d lines)", 100 * covered / (missed + covered), covered, missed + covered
+          }' "$csv")
+          echo "### Backend: $tests tests ($skipped skipped), $line" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Backend tests::$tests tests ($skipped skipped), $line"
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
