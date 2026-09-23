@@ -3,6 +3,7 @@ package dev.hamza.applytrack.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.hamza.applytrack.auth.JwtAuthenticationFilter;
 import dev.hamza.applytrack.auth.JwtService;
+import dev.hamza.applytrack.common.ClientTimeZone;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -72,7 +73,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(properties.allowedOrigins());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", ClientTimeZone.HEADER));
         config.setMaxAge(Duration.ofHours(1));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);

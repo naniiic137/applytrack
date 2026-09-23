@@ -9,7 +9,9 @@ import dev.hamza.applytrack.application.ApplicationDtos.PageResponse;
 import dev.hamza.applytrack.application.ApplicationDtos.StatusUpdateRequest;
 import dev.hamza.applytrack.auth.AuthUser;
 import dev.hamza.applytrack.common.BadRequestException;
+import dev.hamza.applytrack.common.ClientTimeZone;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -41,6 +44,9 @@ public class JobApplicationController {
 
     private static final Set<String> SORTABLE =
             Set.of("updatedAt", "createdAt", "appliedOn", "followUpOn", "company", "role", "status");
+
+    private static final String TIME_ZONE_DOC = "IANA time zone of the user, e.g. Africa/Tunis. Decides what "
+            + "'today' is for the default applied date. Missing or unknown: UTC.";
 
     private final JobApplicationService service;
 
@@ -71,9 +77,12 @@ public class JobApplicationController {
     }
 
     @PostMapping
-    public ResponseEntity<ApplicationDetail> create(@AuthenticationPrincipal AuthUser user,
-                                                    @Valid @RequestBody ApplicationRequest request) {
-        ApplicationDetail created = service.create(user.id(), request);
+    public ResponseEntity<ApplicationDetail> create(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody ApplicationRequest request,
+            @Parameter(description = TIME_ZONE_DOC) @RequestHeader(name = ClientTimeZone.HEADER, required = false)
+            String timeZone) {
+        ApplicationDetail created = service.create(user.id(), request, ClientTimeZone.resolve(timeZone));
         var location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}")
                 .buildAndExpand(created.id()).toUri();
         return ResponseEntity.created(location).body(created);
@@ -81,16 +90,23 @@ public class JobApplicationController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Update an application; the body must carry the version last read (409 if stale)")
-    public ApplicationDetail update(@AuthenticationPrincipal AuthUser user, @PathVariable Long id,
-                                    @Valid @RequestBody ApplicationRequest request) {
-        return service.update(user.id(), id, request);
+    public ApplicationDetail update(
+            @AuthenticationPrincipal AuthUser user, @PathVariable Long id,
+            @Valid @RequestBody ApplicationRequest request,
+            @Parameter(description = TIME_ZONE_DOC) @RequestHeader(name = ClientTimeZone.HEADER, required = false)
+            String timeZone) {
+        return service.update(user.id(), id, request, ClientTimeZone.resolve(timeZone));
     }
 
     @PatchMapping("/{id}/status")
     @Operation(summary = "Move an application to another status (records a timeline entry; 409 if stale)")
-    public ApplicationDetail changeStatus(@AuthenticationPrincipal AuthUser user, @PathVariable Long id,
-                                          @Valid @RequestBody StatusUpdateRequest request) {
-        return service.changeStatus(user.id(), id, request.status(), request.version());
+    public ApplicationDetail changeStatus(
+            @AuthenticationPrincipal AuthUser user, @PathVariable Long id,
+            @Valid @RequestBody StatusUpdateRequest request,
+            @Parameter(description = TIME_ZONE_DOC) @RequestHeader(name = ClientTimeZone.HEADER, required = false)
+            String timeZone) {
+        return service.changeStatus(user.id(), id, request.status(), request.version(),
+                ClientTimeZone.resolve(timeZone));
     }
 
     @DeleteMapping("/{id}")

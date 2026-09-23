@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -49,34 +50,39 @@ public class JobApplicationService {
         return ApplicationDetail.from(load(ownerId, id));
     }
 
-    public ApplicationDetail create(Long ownerId, ApplicationRequest request) {
+    /**
+     * @param zone the user's time zone: "today" (the default applied date) is the user's calendar day,
+     *             not the server's, so an application added at 00:30 in Tunis is dated that day
+     */
+    public ApplicationDetail create(Long ownerId, ApplicationRequest request, ZoneId zone) {
         Instant now = clock.instant();
         ApplicationStatus status = request.status() != null ? request.status() : ApplicationStatus.WISHLIST;
         JobApplication application = new JobApplication(ownerId, request.company().trim(), request.role().trim(),
                 status, now);
         LocalDate appliedOn = request.appliedOn();
         if (appliedOn == null && status != ApplicationStatus.WISHLIST) {
-            appliedOn = today();
+            appliedOn = today(zone);
         }
         applyDetails(application, request, appliedOn, now);
         return ApplicationDetail.from(applications.save(application));
     }
 
-    public ApplicationDetail update(Long ownerId, Long id, ApplicationRequest request) {
+    public ApplicationDetail update(Long ownerId, Long id, ApplicationRequest request, ZoneId zone) {
         JobApplication application = load(ownerId, id);
         checkVersion(application, request.version());
         Instant now = clock.instant();
         applyDetails(application, request, request.appliedOn(), now);
         if (request.status() != null) {
-            application.moveTo(request.status(), now, today());
+            application.moveTo(request.status(), now, today(zone));
         }
         return flushedDetail(application);
     }
 
-    public ApplicationDetail changeStatus(Long ownerId, Long id, ApplicationStatus status, Long expectedVersion) {
+    public ApplicationDetail changeStatus(Long ownerId, Long id, ApplicationStatus status, Long expectedVersion,
+                                          ZoneId zone) {
         JobApplication application = load(ownerId, id);
         checkVersion(application, expectedVersion);
-        application.moveTo(status, clock.instant(), today());
+        application.moveTo(status, clock.instant(), today(zone));
         return flushedDetail(application);
     }
 
@@ -138,8 +144,8 @@ public class JobApplicationService {
                 blankToNull(r.notes()), normalizeTags(r.tags()), now);
     }
 
-    private LocalDate today() {
-        return LocalDate.now(clock);
+    private LocalDate today(ZoneId zone) {
+        return LocalDate.now(clock.withZone(zone));
     }
 
     static Set<String> normalizeTags(List<String> tags) {

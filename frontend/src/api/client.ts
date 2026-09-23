@@ -32,6 +32,17 @@ export function configureClient(options: { getToken: TokenProvider; onUnauthoriz
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 
+/** Header carrying the browser's IANA time zone, so the API computes "today" the way the user sees it. */
+export const TIME_ZONE_HEADER = 'X-Time-Zone';
+
+export function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -43,6 +54,8 @@ export interface RequestOptions {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  const timeZone = browserTimeZone();
+  if (timeZone) headers[TIME_ZONE_HEADER] = timeZone;
 
   const token = options.anonymous ? null : getToken();
   if (token) headers.Authorization = `Bearer ${token}`;

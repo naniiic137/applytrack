@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 
@@ -85,7 +86,7 @@ class StatsServiceTest {
         app("Too old", THIS_MONDAY.minusWeeks(12), ApplicationStatus.APPLIED);
         em.flush();
 
-        List<StatsResponse.WeekCount> weeks = stats.forUser(owner).applicationsPerWeek();
+        List<StatsResponse.WeekCount> weeks = stats.forUser(owner, ZoneOffset.UTC).applicationsPerWeek();
 
         assertThat(weeks).hasSize(StatsService.WEEKS);
         assertThat(weeks.getFirst().weekStart()).isEqualTo(THIS_MONDAY.minusWeeks(11));
@@ -103,7 +104,7 @@ class StatsServiceTest {
                 ApplicationStatus.GHOSTED);
         em.flush();
 
-        StatsResponse result = stats.forUser(owner);
+        StatsResponse result = stats.forUser(owner, ZoneOffset.UTC);
 
         assertThat(result.total()).isEqualTo(4);
         assertThat(result.submitted()).isEqualTo(3);
@@ -131,7 +132,7 @@ class StatsServiceTest {
         withInterview.addInterview(NOW.minus(Duration.ofDays(2)), InterviewType.PHONE_SCREEN, null, NOW);
         em.flush();
 
-        StatsResponse result = stats.forUser(owner);
+        StatsResponse result = stats.forUser(owner, ZoneOffset.UTC);
 
         assertThat(result.upcomingFollowUps())
                 .extracting(StatsResponse.FollowUp::company, StatsResponse.FollowUp::overdue)
@@ -158,7 +159,7 @@ class StatsServiceTest {
                 move(ApplicationStatus.APPLIED, Duration.ofDays(2)));       // kept for 4 days: it happened
         em.flush();
 
-        StatsResponse result = stats.forUser(owner);
+        StatsResponse result = stats.forUser(owner, ZoneOffset.UTC);
 
         assertThat(result.submitted()).isEqualTo(2);
         assertThat(result.interviewRate()).isEqualTo(50.0);
@@ -174,7 +175,7 @@ class StatsServiceTest {
                 move(ApplicationStatus.REJECTED, Duration.ofHours(1)));
         em.flush();
 
-        StatsResponse result = stats.forUser(owner);
+        StatsResponse result = stats.forUser(owner, ZoneOffset.UTC);
 
         assertThat(result.responseRate()).isEqualTo(100.0);
         assertThat(result.interviewRate()).isEqualTo(100.0);
@@ -194,12 +195,31 @@ class StatsServiceTest {
         appWithTimeline("Waiting", move(ApplicationStatus.APPLIED, Duration.ofDays(4)));
         em.flush();
 
-        StatsResponse result = stats.forUser(owner);
+        StatsResponse result = stats.forUser(owner, ZoneOffset.UTC);
 
         assertThat(result.total()).isEqualTo(3);
         assertThat(result.submitted()).isEqualTo(1);
         assertThat(result.responseRate()).isZero();
         assertThat(result.interviewRate()).isZero();
+    }
+
+    @Test
+    void overdueAndWeeklyBucketsFollowTheUsersTimeZone() {
+        // Sunday 8 March, 23:30 UTC = Monday 9 March, 00:30 in Tunis (a new day and a new week)
+        StatsService lateNight = new StatsService(applications, interviews,
+                Clock.fixed(Instant.parse("2026-03-08T23:30:00Z"), ZoneOffset.UTC));
+        LocalDate sunday = LocalDate.of(2026, 3, 8);
+        JobApplication due = app("Due Sunday", sunday, ApplicationStatus.APPLIED);
+        due.updateDetails("Due Sunday", "Dev", null, null, null, sunday, sunday, null, List.of(), NOW);
+        em.flush();
+
+        StatsResponse utc = lateNight.forUser(owner, ZoneOffset.UTC);
+        StatsResponse tunis = lateNight.forUser(owner, ZoneId.of("Africa/Tunis"));
+
+        assertThat(utc.upcomingFollowUps()).singleElement().extracting(StatsResponse.FollowUp::overdue).isEqualTo(false);
+        assertThat(tunis.upcomingFollowUps()).singleElement().extracting(StatsResponse.FollowUp::overdue).isEqualTo(true);
+        assertThat(utc.applicationsPerWeek().getLast().weekStart()).isEqualTo(LocalDate.of(2026, 3, 2));
+        assertThat(tunis.applicationsPerWeek().getLast().weekStart()).isEqualTo(LocalDate.of(2026, 3, 9));
     }
 
     @Test

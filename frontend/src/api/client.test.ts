@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, configureClient, request, toQueryString } from './client';
+import { ApiError, TIME_ZONE_HEADER, browserTimeZone, configureClient, request, toQueryString } from './client';
 import { api } from './endpoints';
 
 function jsonResponse(status: number, body?: unknown, contentType = 'application/json') {
@@ -29,6 +29,7 @@ describe('request', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     fetchMock.mockReset();
     onUnauthorized.mockReset();
   });
@@ -44,6 +45,18 @@ describe('request', () => {
     expect(init.method).toBe('PATCH');
     expect(init.headers.Authorization).toBe('Bearer token-123');
     expect(JSON.parse(init.body)).toEqual({ status: 'OFFER', version: 3 });
+  });
+
+  it("sends the browser's time zone so the API's 'today' matches the user's", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+      timeZone: 'Africa/Tunis',
+    } as Intl.ResolvedDateTimeFormatOptions);
+
+    await api.stats();
+
+    expect(browserTimeZone()).toBe('Africa/Tunis');
+    expect(fetchMock.mock.calls[0][1].headers[TIME_ZONE_HEADER]).toBe('Africa/Tunis');
   });
 
   it('does not send the token for anonymous calls', async () => {

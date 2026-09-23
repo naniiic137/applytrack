@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -51,8 +52,11 @@ public class StatsService {
         this.clock = clock;
     }
 
-    public StatsResponse forUser(Long ownerId) {
-        LocalDate today = LocalDate.now(clock);
+    /**
+     * @param zone the user's time zone: decides which day is "today" for overdue follow-ups and the weekly chart
+     */
+    public StatsResponse forUser(Long ownerId, ZoneId zone) {
+        LocalDate today = LocalDate.now(clock.withZone(zone));
 
         Map<ApplicationStatus, Long> byStatus = new EnumMap<>(ApplicationStatus.class);
         for (ApplicationStatus s : ApplicationStatus.values()) {

@@ -64,6 +64,16 @@ class JobApplicationApiIntegrationTest extends ApiTestSupport {
     }
 
     @Test
+    void anUnknownTimeZoneHeaderFallsBackToUtc() throws Exception {
+        mvc.perform(withToken(post("/api/applications"), token)
+                        .header("X-Time-Zone", "Mars/Olympus_Mons")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("company", "Acme", "role", "Dev", "status", "APPLIED"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.appliedOn", is(LocalDate.now(ZoneOffset.UTC).toString())));
+    }
+
+    @Test
     void invalidPayloadReturnsProblemDetailWithFieldErrors() throws Exception {
         mvc.perform(withToken(post("/api/applications"), token)
                         .contentType(MediaType.APPLICATION_JSON)
